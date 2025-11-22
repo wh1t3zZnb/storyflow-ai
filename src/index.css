@@ -257,6 +257,7 @@ select:focus {
   align-items: flex-start;
   cursor: pointer;
   transition: border-color 0.2s;
+  min-height: 140px;
 }
 
 .character-card:hover {
@@ -280,6 +281,22 @@ select:focus {
 .add-character-card:hover {
   border-color: var(--accent);
   color: var(--accent);
+}
+
+.pill {
+  font-size: 12px;
+  color: var(--text-secondary);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border);
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+.clamp-3 {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 /* Storyboard View */
@@ -334,28 +351,60 @@ select:focus {
 }
 
 .storyboard-card {
-  background-color: var(--bg-secondary);
-  border-radius: 8px;
+  background: linear-gradient(180deg, rgba(30,41,59,0.9), rgba(17,24,39,0.9));
+  border-radius: 12px;
   overflow: hidden;
   border: 1px solid var(--border);
-  transition: border-color 0.2s;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+  transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
 }
 
 .storyboard-card:hover {
   border-color: var(--accent);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(0,0,0,0.35);
 }
 
 .card-image {
-  height: 160px;
+  height: 180px;
   background-color: black;
   display: flex;
   align-items: center;
   justify-content: center;
   position: relative;
+  }
+
+.image-overlay {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 56px;
+  background: linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.55) 100%);
 }
 
 .card-body {
   padding: 16px;
+}
+
+.badge {
+  font-size: 10px;
+  background: rgba(0,0,0,0.5);
+  color: white;
+  padding: 2px 6px;
+  border-radius: 6px;
+  border: 1px solid rgba(255,255,255,0.15);
+}
+
+.badge-accent {
+  background: var(--accent);
+  color: white;
+  border-color: transparent;
+}
+
+.placeholder-box {
+  text-align: center;
+  color: var(--text-secondary);
 }
 
 /* Helpers */
@@ -419,4 +468,10 @@ select:focus {
   border: 1px solid var(--border);
   background: var(--bg-secondary);
   overflow: hidden;
+}
+
+.image-lightbox-img {
+  max-width: 90vw;
+  max-height: 90vh;
+  border-radius: 8px;
 }

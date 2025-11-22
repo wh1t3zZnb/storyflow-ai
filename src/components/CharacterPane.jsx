@@ -5,13 +5,16 @@ export default function CharacterPane({ characters, onAdd, onEdit, banner, onPro
   return (
     <div className="character-view">
       {banner?.active && (
-        <div className="glass-panel" style={{ marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div>
+        <div className="glass-panel" style={{ marginBottom: '16px', padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
             <div style={{ fontWeight: 600 }}>已根据剧本生成 {banner.count} 个角色</div>
-            <div className="text-secondary" style={{ fontSize: '12px' }}>风格：{banner.style} • 比例：{banner.ratio}</div>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <span className="pill">风格：{banner.style}</span>
+              <span className="pill">比例：{banner.ratio}</span>
+            </div>
           </div>
           <button className={`btn ${proceedDisabled || loading ? 'btn-disabled' : 'btn-primary'}`} disabled={proceedDisabled || loading} onClick={onProceed}>{loading ? '拆分分镜中...' : '下一步：拆分分镜'}</button>
-      </div>
+        </div>
       )}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
         <h2 style={{ fontSize: '20px', fontWeight: 600 }}>角色管理 ({characters.length})</h2>
@@ -28,8 +31,8 @@ export default function CharacterPane({ characters, onAdd, onEdit, banner, onPro
               )}
             </div>
             <div>
-              <h3 style={{ fontSize: '18px', fontWeight: 'bold', marginBottom: '4px' }}>{char.name}</h3>
-              <p className="text-secondary" style={{ fontSize: '14px', lineHeight: '1.5' }}>{char.desc}</p>
+              <h3 style={{ fontSize: '18px', fontWeight: 'bold', marginBottom: '6px' }}>{char.name}</h3>
+              <p className="text-secondary clamp-3" style={{ fontSize: '14px', lineHeight: '1.6' }}>{char.desc}</p>
             </div>
           </div>
         ))}

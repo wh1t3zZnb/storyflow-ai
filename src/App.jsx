@@ -419,6 +419,72 @@ function App() {
     const [bannerInfo, setBannerInfo] = useState({ active: false, count: 0, ratio: null, style: null });
     const [loadingExtract, setLoadingExtract] = useState(false);
     const [loadingSplit, setLoadingSplit] = useState(false);
+    const [generating, setGenerating] = useState(false);
+    const [generatingIds, setGeneratingIds] = useState(new Set());
+    const [cancelGeneration, setCancelGeneration] = useState(false);
+    const [stopping, setStopping] = useState(false);
+    const [genAbortController, setGenAbortController] = useState(null);
+    const globalLoadingMsg = (
+        loadingExtract ? '正在抽取角色…' :
+        loadingSplit ? '正在拆分分镜…' :
+        (generating ? (stopping ? '停止中…' : '批量生成中…') : null)
+    );
+
+    const CACHE_KEYS = {
+        script: 'cache.script',
+        frames: 'cache.frames',
+        characters: 'cache.characters',
+        activeTab: 'cache.activeTab',
+        workflowStep: 'cache.workflowStep',
+        projectSetup: 'cache.projectSetup',
+        bannerInfo: 'cache.bannerInfo'
+    };
+
+    useEffect(() => {
+        try {
+            const s = localStorage.getItem(CACHE_KEYS.script);
+            const f = localStorage.getItem(CACHE_KEYS.frames);
+            const c = localStorage.getItem(CACHE_KEYS.characters);
+            const t = localStorage.getItem(CACHE_KEYS.activeTab);
+            const w = localStorage.getItem(CACHE_KEYS.workflowStep);
+            const p = localStorage.getItem(CACHE_KEYS.projectSetup);
+            const b = localStorage.getItem(CACHE_KEYS.bannerInfo);
+            if (s) setScript(s);
+            if (f) {
+                const parsedF = JSON.parse(f);
+                if (Array.isArray(parsedF)) setFrames(parsedF);
+            }
+            if (c) {
+                const parsedC = JSON.parse(c);
+                if (Array.isArray(parsedC)) setCharacters(parsedC);
+            }
+            if (t && (t === 'script' || t === 'characters' || t === 'storyboard')) setActiveTab(t);
+            if (w && (w === 'script' || w === 'roles' || w === 'frames')) setWorkflowStep(w);
+            if (p) {
+                const parsedP = JSON.parse(p);
+                if (parsedP && typeof parsedP === 'object') setProjectSetup({ open: false, ratio: parsedP.ratio ?? null, style: parsedP.style ?? null });
+            }
+            if (b) {
+                const parsedB = JSON.parse(b);
+                if (parsedB && typeof parsedB === 'object') setBannerInfo(parsedB);
+            }
+        } catch {}
+    }, []);
+
+    useEffect(() => {
+        const t = setTimeout(() => {
+            try {
+                localStorage.setItem(CACHE_KEYS.script, script || '');
+                localStorage.setItem(CACHE_KEYS.frames, JSON.stringify(frames));
+                localStorage.setItem(CACHE_KEYS.characters, JSON.stringify(characters));
+                localStorage.setItem(CACHE_KEYS.activeTab, activeTab || 'script');
+                localStorage.setItem(CACHE_KEYS.workflowStep, workflowStep || 'script');
+                localStorage.setItem(CACHE_KEYS.projectSetup, JSON.stringify({ ratio: projectSetup.ratio ?? null, style: projectSetup.style ?? null }));
+                localStorage.setItem(CACHE_KEYS.bannerInfo, JSON.stringify(bannerInfo));
+            } catch {}
+        }, 300);
+        return () => clearTimeout(t);
+    }, [script, frames, characters, activeTab, workflowStep, projectSetup.ratio, projectSetup.style, bannerInfo]);
 
     const updateFrame = (id, field, value) => {
         setFrames(frames.map(f => f.id === id ? { ...f, [field]: value } : f));
@@ -460,7 +526,39 @@ function App() {
             setLoadingSplit(true)
             const roleNames = characters.map(c => ({ name: c.name, styleTags: c.styleTags }))
             const res = await splitStoryboard({ script, ratio, style, roles: roleNames })
-            const mapped = normalizeFrames(res?.frames)
+            let mapped = normalizeFrames(res?.frames)
+            const roleSet = new Set(characters.map(c => c.name))
+            const roleList = characters.map(c => c.name)
+            const mapToKnown = (rawNames) => {
+                const out = []
+                rawNames.forEach(n => {
+                    if (!n) return
+                    const t = n.trim()
+                    if (roleSet.has(t)) { out.push(t); return }
+                    // 模糊匹配：按汉字重合度 ≥2 或包含关系匹配到已定义角色
+                    const chars = Array.from(t)
+                    let best = null, bestScore = 0
+                    roleList.forEach(rn => {
+                        const setA = new Set(chars)
+                        const setB = new Set(Array.from(rn))
+                        let overlap = 0
+                        setA.forEach(ch => { if (setB.has(ch)) overlap++ })
+                        // 包含关系提升分数
+                        if (t.includes(rn) || rn.includes(t)) overlap += 2
+                        if (overlap > bestScore) { bestScore = overlap; best = rn }
+                    })
+                    if (best && bestScore >= 2) out.push(best)
+                })
+                // 去重
+                return Array.from(new Set(out))
+            }
+            mapped = mapped.map(f => {
+                const names = String(f.character || '').split(',').map(n => n.trim()).filter(Boolean)
+                const matched = mapToKnown(names)
+                // 若全部无法匹配，但原始分镜确实写了角色名，则保留原始，以便前端展示与生成参考
+                const finalNames = matched.length > 0 ? matched : names
+                return { ...f, character: finalNames.join(',') }
+            })
             if (mapped.length === 0) throw new Error('未返回分镜')
             setFrames(mapped)
             setBannerInfo({ active: true, count: characters.length, ratio, style })
@@ -486,6 +584,9 @@ function App() {
         if (!confirmed) return;
 
         // 串行生成,避免API并发限制
+        setGenerating(true);
+        setCancelGeneration(false);
+        setStopping(false);
         let successCount = 0;
         let failCount = 0;
 
@@ -496,11 +597,16 @@ function App() {
             console.log(`${progress} 正在生成场景 ${frame.scene}...`);
 
             try {
+                if (cancelGeneration) break;
                 // 获取全局风格(从projectSetup或bannerInfo)
                 const globalStyle = bannerInfo.style || projectSetup.style || '写实摄影';
+                const ratio = bannerInfo.ratio || projectSetup.ratio || '1:1';
 
                 // 调用API生成图片
-                const result = await generateStoryboardImage(frame, characters, globalStyle);
+                setGeneratingIds(prev => new Set(prev).add(frame.id));
+                const controller = new AbortController();
+                setGenAbortController(controller);
+                const result = await generateStoryboardImage(frame, characters, globalStyle, ratio, controller.signal);
 
                 if (result.success) {
                     // 更新该分镜的图片
@@ -510,12 +616,31 @@ function App() {
                     successCount++;
                     console.log(`${progress} 场景 ${frame.scene} 生成成功`);
                 } else {
-                    failCount++;
-                    console.error(`${progress} 场景 ${frame.scene} 生成失败:`, result.error);
+                    const msg = String(result.error || '');
+                    if (/aborted|AbortError/i.test(msg)) {
+                        console.warn(`${progress} 已停止，当前请求已中断`);
+                        break;
+                    } else {
+                        failCount++;
+                        console.error(`${progress} 场景 ${frame.scene} 生成失败:`, result.error);
+                    }
                 }
             } catch (error) {
-                failCount++;
-                console.error(`${progress} 场景 ${frame.scene} 生成失败:`, error);
+                const msg = String(error?.message || '');
+                if (/aborted|AbortError/i.test(msg)) {
+                    console.warn(`${progress} 已停止，当前请求已中断`);
+                    break;
+                } else {
+                    failCount++;
+                    console.error(`${progress} 场景 ${frame.scene} 生成失败:`, error);
+                }
+            } finally {
+                setGeneratingIds(prev => {
+                    const next = new Set(prev);
+                    next.delete(frame.id);
+                    return next;
+                });
+                setGenAbortController(null);
             }
 
             // 每生成一个,延迟一小段时间避免API限流
@@ -524,7 +649,13 @@ function App() {
             }
         }
 
-        alert(`生成完成!\n成功: ${successCount} 个\n失败: ${failCount} 个`);
+        setGenerating(false);
+        setStopping(false);
+        if (cancelGeneration) {
+            alert(`已停止生成!\n成功: ${successCount} 个\n失败: ${failCount} 个`);
+        } else {
+            alert(`生成完成!\n成功: ${successCount} 个\n失败: ${failCount} 个`);
+        }
     };
 
     const handleAddCharacter = () => {
@@ -588,6 +719,33 @@ function App() {
                 </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <button className="btn btn-ghost" onClick={() => {
+                        const confirmed = confirm('将清空剧本、角色、分镜并重置项目设置，是否继续？');
+                        if (!confirmed) return;
+                        try {
+                            localStorage.removeItem('cache.script');
+                            localStorage.removeItem('cache.frames');
+                            localStorage.removeItem('cache.characters');
+                            localStorage.removeItem('cache.activeTab');
+                            localStorage.removeItem('cache.workflowStep');
+                            localStorage.removeItem('cache.projectSetup');
+                            localStorage.removeItem('cache.bannerInfo');
+                            localStorage.removeItem('cache.storyboard.viewMode');
+                            localStorage.removeItem('cache.storyboard.exportOpen');
+                        } catch {}
+                        setScript('');
+                        setCharacters([]);
+                        setFrames([]);
+                        setActiveTab('script');
+                        setWorkflowStep('script');
+                        setProjectSetup({ open: false, ratio: null, style: null });
+                        setBannerInfo({ active: false, count: 0, ratio: null, style: null });
+                        setAiPopupState({ isOpen: false, frameId: null });
+                        setCharModal({ open: false, initial: null });
+                        alert('已清空并重置');
+                    }}>
+                        重新生成
+                    </button>
                     <button className="btn btn-ghost" onClick={() => setSettingsOpen(true)}>
                         <Settings size={16} />
                         设置
@@ -631,9 +789,63 @@ function App() {
                         onGeneratePreview={handleGeneratePreview}
                         onUploadPreview={handleUploadPreview}
                         onGenerateAll={handleGenerateAllPreviews}
+                        generating={generating}
+                        generatingIds={generatingIds}
+                        displayRatio={(bannerInfo.ratio || projectSetup.ratio || '1:1')}
+                        stopping={stopping}
+                        onStop={() => {
+                            setStopping(true);
+                            setCancelGeneration(true);
+                            try {
+                                genAbortController?.abort();
+                            } catch {}
+                        }}
+                        onRegenerate={async () => {
+                            try {
+                                // 清理与分镜相关的本地缓存
+                                localStorage.removeItem(CACHE_KEYS.frames);
+                                localStorage.removeItem('cache.storyboard.viewMode');
+                                localStorage.removeItem('cache.storyboard.exportOpen');
+                            } catch {}
+                            try {
+                                setLoadingSplit(true);
+                                const roleNames = characters.map(c => ({ name: c.name, styleTags: c.styleTags }));
+                                const useRatio = bannerInfo.ratio || projectSetup.ratio || '16:9';
+                                const useStyle = bannerInfo.style || projectSetup.style || '写实';
+                                const res = await splitStoryboard({ script, ratio: useRatio, style: useStyle, roles: roleNames });
+                                let mapped = normalizeFrames(res?.frames);
+                                const roleSet = new Set(characters.map(c => c.name));
+                                mapped = mapped.map(f => {
+                                    const names = String(f.character || '').split(',').map(n => n.trim()).filter(Boolean);
+                                    const filtered = names.filter(n => roleSet.has(n));
+                                    return { ...f, character: filtered.join(',') };
+                                });
+                                if (mapped.length === 0) throw new Error('未返回分镜');
+                                setFrames(mapped);
+                                setWorkflowStep('frames');
+                                setActiveTab('storyboard');
+                            } catch (e) {
+                                alert(`重新生成失败：${e.message}`);
+                            } finally {
+                                setLoadingSplit(false);
+                            }
+                        }}
                     />
                 )}
             </main>
+
+            {globalLoadingMsg && (
+                <div className="modal-overlay" style={{ zIndex: 1100 }}>
+                    <div className="glass-panel" style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px' }}>
+                        <svg width="22" height="22" viewBox="0 0 50 50" aria-label="loading">
+                            <circle cx="25" cy="25" r="20" stroke="white" strokeWidth="4" fill="none" strokeDasharray="90" strokeDashoffset="0">
+                                <animateTransform attributeName="transform" type="rotate" from="0 25 25" to="360 25 25" dur="1s" repeatCount="indefinite" />
+                            </circle>
+                        </svg>
+                        <span style={{ fontSize: '14px' }}>{globalLoadingMsg}</span>
+                    </div>
+                </div>
+            )}
 
         </div>
     );
@@ -645,6 +857,7 @@ const CharacterModal = ({ open, onClose, onSave, initial }) => {
     const [name, setName] = useState(initial?.name || '');
     const [age, setAge] = useState(initial?.age || '');
     const [gender, setGender] = useState(initial?.gender || '其他');
+    const [nationality, setNationality] = useState(initial?.nationality || '中国');
     const [traits, setTraits] = useState(initial?.traits || '');
     const [backstory, setBackstory] = useState(initial?.backstory || '');
     const [styleTags, setStyleTags] = useState(initial?.styleTags?.join(',') || '');
@@ -652,12 +865,14 @@ const CharacterModal = ({ open, onClose, onSave, initial }) => {
     const [imageUrl, setImageUrl] = useState(initial?.imageUrl || '');
     const [referenceImages, setReferenceImages] = useState(initial?.referenceImages || []);
     const [generating, setGenerating] = useState(false);
+    const [lightboxUrl, setLightboxUrl] = useState(null);
 
     useEffect(() => {
         if (open) {
             setName(initial?.name || '');
             setAge(initial?.age || '');
             setGender(initial?.gender || '其他');
+            setNationality(initial?.nationality || '中国');
             setTraits(initial?.traits || '');
             setBackstory(initial?.backstory || '');
             setStyleTags(initial?.styleTags?.join(',') || '');
@@ -694,6 +909,7 @@ const CharacterModal = ({ open, onClose, onSave, initial }) => {
                 desc,
                 age,
                 gender,
+                nationality,
                 traits
             });
 
@@ -716,6 +932,7 @@ const CharacterModal = ({ open, onClose, onSave, initial }) => {
             name: name.trim() || '未命名角色',
             age,
             gender,
+            nationality,
             traits,
             backstory,
             styleTags: styleTags.split(',').map(s => s.trim()).filter(Boolean),
@@ -748,6 +965,10 @@ const CharacterModal = ({ open, onClose, onSave, initial }) => {
                             <option>其他</option>
                         </select>
                     </div>
+                    <div>
+                        <label style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>国籍</label>
+                        <input value={nationality} onChange={(e) => setNationality(e.target.value)} placeholder="例如：中国" />
+                    </div>
                     <div style={{ gridColumn: '1 / -1' }}>
                         <label style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>人物特征</label>
                         <input value={traits} onChange={(e) => setTraits(e.target.value)} placeholder="例如：冷酷，敏捷，黑色雨衣" />
@@ -767,7 +988,7 @@ const CharacterModal = ({ open, onClose, onSave, initial }) => {
                 </div>
 
                 <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginTop: '12px' }}>
-                    <div className="image-preview">
+                    <div className="image-preview" style={{ cursor: imageUrl ? 'zoom-in' : 'default' }} onClick={() => imageUrl && setLightboxUrl(imageUrl)}>
                         {imageUrl ? (
                             <img src={imageUrl} alt="preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                         ) : (
@@ -778,7 +999,7 @@ const CharacterModal = ({ open, onClose, onSave, initial }) => {
                     </div>
                     <div style={{ display: 'flex', gap: '8px' }}>
                         <label className="btn btn-ghost" style={{ cursor: 'pointer' }}>
-                            上传参考图
+                            上传图片
                             <input type="file" accept="image/*" onChange={handleUpload} style={{ display: 'none' }} />
                         </label>
                         <button
@@ -791,6 +1012,14 @@ const CharacterModal = ({ open, onClose, onSave, initial }) => {
                         </button>
                     </div>
                 </div>
+
+                {lightboxUrl && (
+                    <div className="modal-overlay" style={{ zIndex: 1101 }} onClick={() => setLightboxUrl(null)}>
+                        <div style={{ background: 'transparent' }} onClick={(e) => e.stopPropagation()}>
+                            <img src={lightboxUrl} alt="preview" className="image-lightbox-img" />
+                        </div>
+                    </div>
+                )}
 
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '16px' }}>
                     <button className="btn btn-ghost" onClick={onClose}><X size={14} />取消</button>

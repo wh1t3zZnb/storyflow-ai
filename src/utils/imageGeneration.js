@@ -1,12 +1,4 @@
-/**
- * 图片生成API封装
- * 用于调用OpenRouter的图片生成API
- */
-
-// API配置
-const API_KEY = "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";
-const API_URL = "https://openrouter.ai/api/v1/chat/completions";
-const MODEL = "google/gemini-2.5-flash-image";
+import { loadApiConfig } from './apiConfig.js'
 
 /**
  * 为角色生成参考图
@@ -20,6 +12,9 @@ const MODEL = "google/gemini-2.5-flash-image";
  */
 export async function generateCharacterImage(character) {
     try {
+        const { imageBaseUrl, imageApiKey, imageModelId, baseUrl, apiKey, modelId } = loadApiConfig();
+        const API_URL = (imageBaseUrl || baseUrl || 'https://openrouter.ai/api/v1/chat/completions');
+        const MODEL = (imageModelId || modelId || 'google/gemini-2.5-flash-image');
         // 构建提示词
         const prompt = buildCharacterPrompt(character);
 
@@ -27,7 +22,7 @@ export async function generateCharacterImage(character) {
         const response = await fetch(API_URL, {
             method: 'POST',
             headers: {
-                'Authorization': `Bearer ${API_KEY}`,
+                'Authorization': `Bearer ${imageApiKey || apiKey}`,
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
@@ -78,6 +73,45 @@ export async function generateCharacterImage(character) {
  * @param {Object} character - 角色数据
  * @returns {string} 提示词
  */
+const STYLE_PRESETS = {
+    '通用': {
+        name: '写实摄影',
+        lines: [
+            '写实摄影',
+            '胶片级色彩分级',
+            '35mm 定焦, f/2.8',
+            '柔和自然光, 低对比度',
+            '微颗粒质感, 电影感'
+        ],
+        negative: [
+            '卡通', '漫画', '水彩', '赛璐璐', '插画风', '3D 渲染', '过度锐化', '夸张风格'
+        ]
+    },
+    '写实摄影': {
+        name: '写实摄影',
+        lines: [
+            '写实摄影',
+            '电影级色彩分级',
+            '35mm 定焦, f/2.8',
+            '自然光照, 柔和阴影',
+            '低噪点, 真实质感'
+        ],
+        negative: [
+            '卡通', '漫画', '水彩', '插画风', '3D 渲染', '夸张风格'
+        ]
+    }
+};
+
+function buildStyleBlock(style) {
+    const preset = STYLE_PRESETS[style] || STYLE_PRESETS['写实摄影'];
+    const lines = [];
+    lines.push('【整体风格】');
+    preset.lines.forEach(l => lines.push(`- ${l}`));
+    lines.push('【避免】');
+    lines.push(`- ${preset.negative.join('，')}`);
+    return lines.join('\n');
+}
+
 function buildCharacterPrompt(character) {
     const parts = [];
 
@@ -86,6 +120,9 @@ function buildCharacterPrompt(character) {
 
     // 添加性别和年龄
     const details = [];
+    if (character.nationality) {
+        details.push(character.nationality);
+    }
     if (character.gender && character.gender !== '其他') {
         details.push(character.gender);
     }
@@ -144,8 +181,8 @@ function buildCharacterPrompt(character) {
     }
 
     // 固定要求
+    parts.push(buildStyleBlock('写实摄影'));
     parts.push('【生成要求】');
-    parts.push('- 风格: 写实摄影');
     parts.push('- 角度: 正面或3/4侧面肖像');
     parts.push('- 重点: 清晰的面部特征和整体形象');
     parts.push('- 背景: 简洁纯色或虚化背景');
@@ -161,18 +198,30 @@ function buildCharacterPrompt(character) {
  * @param {string} globalStyle - 全局风格
  * @returns {Promise<{success: boolean, imageUrl?: string, error?: string}>}
  */
-export async function generateStoryboardImage(frame, characters = [], globalStyle = '写实摄影') {
+export async function generateStoryboardImage(frame, characters = [], globalStyle = '写实摄影', ratio = '1:1', signal) {
     try {
+        const { imageBaseUrl, imageApiKey, imageModelId, baseUrl, apiKey, modelId } = loadApiConfig();
+        const API_URL = (imageBaseUrl || baseUrl || 'https://openrouter.ai/api/v1/chat/completions');
+        const MODEL = (imageModelId || modelId || 'google/gemini-2.5-flash-image');
         // 构建提示词
-        const prompt = buildStoryboardPrompt(frame, globalStyle);
+        const prompt = buildStoryboardPrompt(frame, globalStyle, characters);
 
         // 获取相关角色的参考图
         const characterImages = getCharacterReferences(frame, characters);
 
         // 构建消息内容
-        const content = [
-            { type: "text", text: prompt }
-        ];
+        const content = [];
+        if (frame.character && characters && characters.length > 0) {
+            const names = frame.character.split(',').map(n => n.trim()).filter(Boolean);
+            const metas = names.map(n => {
+                const c = characters.find(x => x.name === n);
+                return c && c.nationality ? `${n}(${c.nationality})` : n;
+            }).filter(Boolean);
+            if (metas.length > 0) {
+                content.push({ type: "text", text: `角色信息: ${metas.join(', ')}` });
+            }
+        }
+        content.push({ type: "text", text: prompt });
 
         // 添加角色参考图
         if (characterImages.length > 0) {
@@ -188,22 +237,25 @@ export async function generateStoryboardImage(frame, characters = [], globalStyl
         const response = await fetch(API_URL, {
             method: 'POST',
             headers: {
-                'Authorization': `Bearer ${API_KEY}`,
+                'Authorization': `Bearer ${imageApiKey || apiKey}`,
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
                 model: MODEL,
+                modalities: ["text", "image"],
+                image_config: { aspect_ratio: ratio },
                 messages: [
                     {
                         role: "system",
-                        content: "你是专业的分镜画师。"
+                        content: `你是专业的分镜画师。必须严格遵循给定的整体风格与角色外观。在不同镜头里保持同一角色的形象一致，不改变风格、材质、光照与色彩分级。`
                     },
                     {
                         role: "user",
                         content: content
                     }
                 ]
-            })
+            }),
+            signal
         });
 
         if (!response.ok) {
@@ -240,22 +292,31 @@ export async function generateStoryboardImage(frame, characters = [], globalStyl
  * @param {string} globalStyle - 全局风格
  * @returns {string} 提示词
  */
-function buildStoryboardPrompt(frame, globalStyle) {
+function buildStoryboardPrompt(frame, globalStyle, characters = []) {
     const parts = [];
 
     parts.push('你是专业的分镜画师。请生成分镜图片。');
     parts.push('');
 
-    // 整体风格
-    parts.push('【整体风格】');
-    parts.push(`- 风格: ${globalStyle}`);
-    parts.push('- 比例: 16:9');
+    parts.push(buildStyleBlock(globalStyle));
     parts.push('');
 
     // 场景信息
     parts.push(`【场景 ${frame.scene}】`);
     if (frame.character) {
         parts.push(`角色: ${frame.character}`);
+        const names = String(frame.character).split(',').map(n => n.trim()).filter(Boolean);
+        const descs = names.map(n => {
+            const c = characters.find(x => x.name === n);
+            if (!c) return null;
+            const basics = [c.nationality, (c.gender && c.gender !== '其他') ? c.gender : null, c.age].filter(Boolean).join(', ');
+            const d = c.desc ? c.desc : '';
+            return `${n}${basics ? `（${basics}）` : ''}: ${d}`.trim();
+        }).filter(Boolean);
+        if (descs.length > 0) {
+            parts.push('【角色外观】');
+            descs.forEach(line => parts.push(`- ${line}`));
+        }
     }
     if (frame.shot) {
         parts.push(`景别: ${frame.shot}`);
@@ -264,7 +325,12 @@ function buildStoryboardPrompt(frame, globalStyle) {
 
     // 画面描述
     parts.push(frame.content || '');
-
+    parts.push('');
+    parts.push('【镜头设定】');
+    parts.push('- 统一镜头参数与色调, 不改变风格');
+    parts.push('- 构图稳定, 光照一致, 色彩分级一致');
+    parts.push('');
+    
     return parts.join('\n');
 }
 
@@ -288,6 +354,9 @@ function getCharacterReferences(frame, characters) {
         const char = characters.find(c => c.name === name);
         if (char && char.imageUrl) {
             refs.push(char.imageUrl);
+        }
+        if (char && Array.isArray(char.referenceImages)) {
+            char.referenceImages.forEach(url => { if (url) refs.push(url); });
         }
     });
 

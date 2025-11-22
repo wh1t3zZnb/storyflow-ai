@@ -26,7 +26,7 @@ export default function ScriptPane({ script, setScript, onSplit, loading }) {
             </button>
           </div>
         </div>
-        <div className="script-info">说明：你可以直接粘贴或手动编写剧本；也可使用“随机生成”从模板快速开始。暂不支持上传文件。</div>
+        <div className="script-info">说明：你可以直接粘贴或手动编写剧本；也可使用“随机生成”从模板快速开始。</div>
         <textarea
           value={script}
           onChange={(e) => setScript(e.target.value)}

@@ -7,13 +7,13 @@ export default function ProjectSetupModal({ open, onClose, onConfirm }) {
   useEffect(() => {
     if (open) {
       setRatio(null);
-      setStyle(null);
+      setStyle('写实');
     }
   }, [open]);
 
   if (!open) return null;
 
-  const styles = ['通用', '古装', '写实', '动漫', '素描', '油画', '水彩', '电影', '现代', '科幻'];
+  const styles = ['写实'];
 
   const confirmDisabled = !ratio || !style;
 
@@ -46,7 +46,7 @@ export default function ProjectSetupModal({ open, onClose, onConfirm }) {
 
         <div>
           <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '8px' }}>整体风格</div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
+          <div style={{ display: 'flex', gap: '8px' }}>
             {styles.map(s => (
               <button key={s} className={`btn ${style === s ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setStyle(s)}>{s}</button>
             ))}
