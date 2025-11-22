@@ -36,7 +36,12 @@ export default function SettingsModal({ open, initial, onClose, onSave }) {
   return (
     <div className="modal-overlay">
       <div className="glass-panel modal">
-        <h3 style={{ fontSize: '18px', fontWeight: 600, marginBottom: '12px' }}>API 设置</h3>
+        <h3 style={{ fontSize: '18px', fontWeight: 600, marginBottom: '12px' }}>
+          API 设置
+          <span style={{ fontSize: '12px', fontWeight: 'normal', color: 'var(--text-secondary)', marginLeft: '8px' }}>
+            (当前仅支持 Gemini 系列)
+          </span>
+        </h3>
         <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
           <button className={`btn ${mode === 'text' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setMode('text')}>文本模型</button>
           <button className={`btn ${mode === 'image' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setMode('image')}>图片模型</button>

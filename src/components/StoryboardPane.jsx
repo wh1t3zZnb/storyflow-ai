@@ -41,10 +41,10 @@ export default function StoryboardPane({
     return 1;
   })();
 
-  useEffect(() => {}, [viewMode]);
+  useEffect(() => { }, [viewMode]);
 
   useEffect(() => {
-    try { localStorage.setItem('cache.storyboard.exportOpen', String(exportOpen)); } catch {}
+    try { localStorage.setItem('cache.storyboard.exportOpen', String(exportOpen)); } catch { }
   }, [exportOpen]);
 
   return (
@@ -57,7 +57,7 @@ export default function StoryboardPane({
           >
             <List size={16} /> 列表视图
           </button>
-          
+
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <div className="text-secondary" style={{ fontSize: '13px' }}>
@@ -92,93 +92,93 @@ export default function StoryboardPane({
       <div className="storyboard-content">
         {
           (
-          <table className="storyboard-table">
-            <thead>
-              <tr>
-                <th style={{ width: '50px' }}>#</th>
-                <th style={{ width: '160px' }}>预览图</th>
-                <th style={{ width: '140px' }}>角色</th>
-                <th>画面描述</th>
-                <th>台词/音效</th>
-                <th style={{ width: '80px' }}>景别</th>
-                <th style={{ width: '80px' }}>运镜</th>
-                <th style={{ width: '70px' }}>时长</th>
-                <th style={{ width: '60px' }}>操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              {frames.map((frame) => (
-                <tr key={frame.id}>
-                  <td style={{ fontWeight: 'bold' }}>{frame.scene}</td>
-                  <td>
-                    <div style={{ width: '160px', aspectRatio: ratioValue, borderRadius: '6px', background: '#000', position: 'relative', overflow: 'hidden', border: '1px solid var(--border)' }}>
-                      {frame.imageUrl ? (
-                        <img src={frame.imageUrl} alt="thumb" style={{ width: '100%', height: '100%', objectFit: 'cover', cursor: 'zoom-in' }} onClick={() => setPreviewUrl(frame.imageUrl)} />
-                      ) : (
-                        <div className="flex-center" style={{ width: '100%', height: '100%', color: 'var(--text-secondary)', fontSize: '12px' }}>
-                          未生成
-                        </div>
-                      )}
-                      {generatingIds && generatingIds.has && generatingIds.has(frame.id) && (
-                        <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                          <svg width="32" height="32" viewBox="0 0 50 50" aria-label="loading">
-                            <circle cx="25" cy="25" r="20" stroke="white" strokeWidth="4" fill="none" strokeDasharray="90" strokeDashoffset="0">
-                              <animateTransform attributeName="transform" type="rotate" from="0 25 25" to="360 25 25" dur="1s" repeatCount="indefinite" />
-                            </circle>
-                          </svg>
-                        </div>
-                      )}
-                    </div>
-                  </td>
-                  <td>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                      {String(frame.character || '')
-                        .split(',')
-                        .map(n => n.trim())
-                        .filter(Boolean)
-                        .map(name => (
-                          <span key={name} style={{ fontSize: '12px', padding: '2px 6px', borderRadius: '12px', background: 'var(--chip-bg)', color: 'var(--text-secondary)', border: '1px solid var(--border)' }}>{name}</span>
-                        ))}
-                      {(!frame.character || String(frame.character).trim() === '') && (
-                        <span className="text-secondary" style={{ fontSize: '12px' }}>无</span>
-                      )}
-                    </div>
-                  </td>
-                  <td style={{ minWidth: '220px' }}>
-                    <EditableCell multiline value={frame.content} onSave={(val) => updateFrame(frame.id, 'content', val)} />
-                  </td>
-                  <td style={{ minWidth: '180px', color: 'var(--text-secondary)' }}>
-                    <EditableCell multiline value={frame.dialogue} onSave={(val) => updateFrame(frame.id, 'dialogue', val)} />
-                  </td>
-                  <td>
-                    <EditableCell value={frame.shot} onSave={(val) => updateFrame(frame.id, 'shot', val)} />
-                  </td>
-                  <td>
-                    <EditableCell value={frame.cameraMovement} onSave={(val) => updateFrame(frame.id, 'cameraMovement', val)} />
-                  </td>
-                  <td>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                      <EditableCell type="number" value={frame.duration} onSave={(val) => updateFrame(frame.id, 'duration', Number(val))} />
-                      <span className="text-secondary" style={{ fontSize: '12px' }}>s</span>
-                    </div>
-                  </td>
-                  <td style={{ position: 'relative' }}>
-                    <button className="btn-icon" onClick={() => setAiPopupState({ isOpen: true, frameId: frame.id })}>
-                      <Sparkles size={14} />
-                    </button>
-                    {aiPopupState.isOpen && aiPopupState.frameId === frame.id && (
-                      <AIEditPopup
-                        isOpen={true}
-                        targetName={`场号 ${frame.scene}`}
-                        onClose={() => setAiPopupState({ isOpen: false, frameId: null })}
-                        onSubmit={handleAIRequest}
-                      />
-                    )}
-                  </td>
+            <table className="storyboard-table">
+              <thead>
+                <tr>
+                  <th style={{ width: '50px' }}>#</th>
+                  <th style={{ width: '160px' }}>预览图</th>
+                  <th style={{ width: '140px' }}>角色</th>
+                  <th>画面描述</th>
+                  <th>台词/音效</th>
+                  <th style={{ width: '80px' }}>景别</th>
+                  <th style={{ width: '80px' }}>运镜</th>
+                  <th style={{ width: '70px' }}>时长</th>
+                  <th style={{ width: '60px' }}>操作</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {frames.map((frame) => (
+                  <tr key={frame.id}>
+                    <td style={{ fontWeight: 'bold' }}>{frame.scene}</td>
+                    <td>
+                      <div style={{ width: '160px', aspectRatio: ratioValue, borderRadius: '6px', background: 'var(--bg-secondary)', position: 'relative', overflow: 'hidden', border: '1px solid var(--border)' }}>
+                        {frame.imageUrl ? (
+                          <img src={frame.imageUrl} alt="thumb" style={{ width: '100%', height: '100%', objectFit: 'cover', cursor: 'zoom-in' }} onClick={() => setPreviewUrl(frame.imageUrl)} />
+                        ) : (
+                          <div className="flex-center" style={{ width: '100%', height: '100%', color: 'var(--text-secondary)', fontSize: '12px' }}>
+                            未生成
+                          </div>
+                        )}
+                        {generatingIds && generatingIds.has && generatingIds.has(frame.id) && (
+                          <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <svg width="32" height="32" viewBox="0 0 50 50" aria-label="loading">
+                              <circle cx="25" cy="25" r="20" stroke="white" strokeWidth="4" fill="none" strokeDasharray="90" strokeDashoffset="0">
+                                <animateTransform attributeName="transform" type="rotate" from="0 25 25" to="360 25 25" dur="1s" repeatCount="indefinite" />
+                              </circle>
+                            </svg>
+                          </div>
+                        )}
+                      </div>
+                    </td>
+                    <td>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                        {String(frame.character || '')
+                          .split(',')
+                          .map(n => n.trim())
+                          .filter(Boolean)
+                          .map(name => (
+                            <span key={name} style={{ fontSize: '12px', padding: '2px 6px', borderRadius: '12px', background: 'var(--chip-bg)', color: 'var(--text-secondary)', border: '1px solid var(--border)' }}>{name}</span>
+                          ))}
+                        {(!frame.character || String(frame.character).trim() === '') && (
+                          <span className="text-secondary" style={{ fontSize: '12px' }}>无</span>
+                        )}
+                      </div>
+                    </td>
+                    <td style={{ minWidth: '220px' }}>
+                      <EditableCell multiline value={frame.content} onSave={(val) => updateFrame(frame.id, 'content', val)} />
+                    </td>
+                    <td style={{ minWidth: '180px', color: 'var(--text-secondary)' }}>
+                      <EditableCell multiline value={frame.dialogue} onSave={(val) => updateFrame(frame.id, 'dialogue', val)} />
+                    </td>
+                    <td>
+                      <EditableCell value={frame.shot} onSave={(val) => updateFrame(frame.id, 'shot', val)} />
+                    </td>
+                    <td>
+                      <EditableCell value={frame.cameraMovement} onSave={(val) => updateFrame(frame.id, 'cameraMovement', val)} />
+                    </td>
+                    <td>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <EditableCell type="number" value={frame.duration} onSave={(val) => updateFrame(frame.id, 'duration', Number(val))} />
+                        <span className="text-secondary" style={{ fontSize: '12px' }}>s</span>
+                      </div>
+                    </td>
+                    <td style={{ position: 'relative' }}>
+                      <button className="btn-icon" onClick={() => setAiPopupState({ isOpen: true, frameId: frame.id })}>
+                        <Sparkles size={14} />
+                      </button>
+                      {aiPopupState.isOpen && aiPopupState.frameId === frame.id && (
+                        <AIEditPopup
+                          isOpen={true}
+                          targetName={`场号 ${frame.scene}`}
+                          onClose={() => setAiPopupState({ isOpen: false, frameId: null })}
+                          onSubmit={handleAIRequest}
+                        />
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           )
         }
       </div>
