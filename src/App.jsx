@@ -21,9 +21,14 @@ import ProjectSetupModal from './components/ProjectSetupModal.jsx';
 import SettingsModal from './components/SettingsModal.jsx';
 import { loadApiConfig, saveApiConfig } from './utils/apiConfig.js';
 import { extractRoles, splitStoryboard, normalizeRoles, normalizeFrames } from './utils/llm.js';
+import { putImage, getImage, clearAll as clearImageCache, toThumbnail } from './utils/imageCache.js';
 
 import { generateCharacterImage, generateStoryboardImage } from './utils/imageGeneration.js';
 import { AlertModal, ConfirmModal } from './components/CommonModals.jsx';
+import LoginModal from './components/Auth/LoginModal.jsx';
+import UserMenu from './components/Auth/UserMenu.jsx';
+import Toast from './components/Toast.jsx';
+import { useAuth } from './context/AuthContext.jsx';
 
 // --- Data ---
 
@@ -408,7 +413,19 @@ const StoryboardView = ({ frames, updateFrame, aiPopupState, setAiPopupState, ha
 // --- Main App ---
 
 function App() {
+    const { user } = useAuth();
+    const [loginModalOpen, setLoginModalOpen] = useState(false);
+    const [toast, setToast] = useState(null); // { message, type }
     const [activeTab, setActiveTab] = useState('script');
+
+    // Welcome Toast Logic
+    useEffect(() => {
+        if (user) {
+            setLoginModalOpen(false);
+            const name = user.user_metadata?.full_name || user.email?.split('@')[0];
+            setToast({ message: `Welcome back, ${name}!`, type: 'success' });
+        }
+    }, [user]);
     const [script, setScript] = useState('');
     const [frames, setFrames] = useState([]);
     const [characters, setCharacters] = useState([]);
@@ -461,7 +478,8 @@ function App() {
         activeTab: 'cache.activeTab',
         workflowStep: 'cache.workflowStep',
         projectSetup: 'cache.projectSetup',
-        bannerInfo: 'cache.bannerInfo'
+        bannerInfo: 'cache.bannerInfo',
+        originPort: 'cache.originPort'
     };
 
     useEffect(() => {
@@ -473,10 +491,26 @@ function App() {
             const w = localStorage.getItem(CACHE_KEYS.workflowStep);
             const p = localStorage.getItem(CACHE_KEYS.projectSetup);
             const b = localStorage.getItem(CACHE_KEYS.bannerInfo);
+            const prevPort = localStorage.getItem(CACHE_KEYS.originPort);
             if (s) setScript(s);
             if (f) {
                 const parsedF = JSON.parse(f);
-                if (Array.isArray(parsedF)) setFrames(parsedF);
+                if (Array.isArray(parsedF)) {
+                    setFrames(parsedF);
+                    setFrames(prev => prev.map(fr => fr.imageUrl ? fr : (fr.thumbnailUrl ? { ...fr, imageUrl: fr.thumbnailUrl } : fr)));
+                    const keys = parsedF.map(x => x.imageKey).filter(Boolean);
+                    if (keys.length > 0) {
+                        Promise.all(keys.map(k => getImage(k).then(v => ({ k, v })).catch(() => ({ k, v: null })))).then(list => {
+                            setFrames(prev => prev.map(fr => {
+                                const k = fr.imageKey;
+                                if (!k) return fr;
+                                const found = list.find(it => it.k === k);
+                                if (found && found.v) return { ...fr, imageUrl: found.v };
+                                return fr;
+                            }));
+                        });
+                    }
+                }
             }
             if (c) {
                 const parsedC = JSON.parse(c);
@@ -492,22 +526,51 @@ function App() {
                 const parsedB = JSON.parse(b);
                 if (parsedB && typeof parsedB === 'object') setBannerInfo(parsedB);
             }
+            const curPort = String(window.location.port || '');
+            if (prevPort && prevPort !== curPort) {
+                showAlert('检测到端口变化，之前生成的图片缓存暂不可见。缩略图已回填，可继续使用。建议固定开发端口。', '提示', 'warning');
+            }
         } catch { }
     }, []);
 
     useEffect(() => {
         const t = setTimeout(() => {
             try {
+                const slimFrames = frames.map(({ imageUrl, ...rest }) => rest);
                 localStorage.setItem(CACHE_KEYS.script, script || '');
-                localStorage.setItem(CACHE_KEYS.frames, JSON.stringify(frames));
+                localStorage.setItem(CACHE_KEYS.frames, JSON.stringify(slimFrames));
+                localStorage.setItem(CACHE_KEYS.characters, JSON.stringify(characters));
+                localStorage.setItem(CACHE_KEYS.activeTab, activeTab || 'script');
+                localStorage.setItem(CACHE_KEYS.workflowStep, workflowStep || 'script');
+                localStorage.setItem(CACHE_KEYS.projectSetup, JSON.stringify({ ratio: projectSetup.ratio ?? null, style: projectSetup.style ?? null }));
+                localStorage.setItem(CACHE_KEYS.bannerInfo, JSON.stringify(bannerInfo));
+                localStorage.setItem(CACHE_KEYS.originPort, String(window.location.port || ''));
+            } catch { }
+        }, 300);
+        return () => clearTimeout(t);
+    }, [script, frames, characters, activeTab, workflowStep, projectSetup.ratio, projectSetup.style, bannerInfo]);
+
+    useEffect(() => {
+        const flushCache = () => {
+            try {
+                const slimFrames = frames.map(({ imageUrl, ...rest }) => rest);
+                localStorage.setItem(CACHE_KEYS.script, script || '');
+                localStorage.setItem(CACHE_KEYS.frames, JSON.stringify(slimFrames));
                 localStorage.setItem(CACHE_KEYS.characters, JSON.stringify(characters));
                 localStorage.setItem(CACHE_KEYS.activeTab, activeTab || 'script');
                 localStorage.setItem(CACHE_KEYS.workflowStep, workflowStep || 'script');
                 localStorage.setItem(CACHE_KEYS.projectSetup, JSON.stringify({ ratio: projectSetup.ratio ?? null, style: projectSetup.style ?? null }));
                 localStorage.setItem(CACHE_KEYS.bannerInfo, JSON.stringify(bannerInfo));
             } catch { }
-        }, 300);
-        return () => clearTimeout(t);
+        };
+        const handler = () => flushCache();
+        window.addEventListener('beforeunload', handler);
+        const visHandler = () => { if (document.visibilityState === 'hidden') flushCache(); };
+        document.addEventListener('visibilitychange', visHandler);
+        return () => {
+            window.removeEventListener('beforeunload', handler);
+            document.removeEventListener('visibilitychange', visHandler);
+        };
     }, [script, frames, characters, activeTab, workflowStep, projectSetup.ratio, projectSetup.style, bannerInfo]);
 
     const updateFrame = (id, field, value) => {
@@ -605,6 +668,19 @@ function App() {
         let successCount = 0;
         let failCount = 0;
 
+        const sceneLastImageMap = new Map();
+        const getSceneAnchorText = (scene) => {
+            try {
+                const same = frames.filter(f => String(f.scene) === String(scene));
+                if (same.length === 0) return '';
+                const first = same[0];
+                const base = String(first.content || '').trim();
+                return base ? base : '';
+            } catch {
+                return '';
+            }
+        };
+
         for (let i = 0; i < framesToGenerate.length; i++) {
             const frame = framesToGenerate[i];
             const progress = `[${i + 1}/${framesToGenerate.length}]`;
@@ -621,13 +697,19 @@ function App() {
                 setGeneratingIds(prev => new Set(prev).add(frame.id));
                 const controller = new AbortController();
                 setGenAbortController(controller);
-                const result = await generateStoryboardImage(frame, characters, globalStyle, ratio, controller.signal);
+                const sceneAnchor = getSceneAnchorText(frame.scene);
+                const sceneRefs = [];
+                if (sceneLastImageMap.has(String(frame.scene))) {
+                    const prevUrl = sceneLastImageMap.get(String(frame.scene));
+                    if (prevUrl) sceneRefs.push(prevUrl);
+                }
+                const result = await generateStoryboardImage(frame, characters, globalStyle, ratio, controller.signal, sceneAnchor, sceneRefs);
 
                 if (result.success) {
-                    // 更新该分镜的图片
-                    setFrames(prev => prev.map(f =>
-                        f.id === frame.id ? { ...f, imageUrl: result.imageUrl } : f
-                    ));
+                    const key = `frame_${frame.id}`;
+                    try { await putImage(key, result.imageUrl) } catch { }
+                    setFrames(prev => prev.map(f => f.id === frame.id ? { ...f, imageUrl: result.imageUrl, imageKey: key } : f));
+                    try { sceneLastImageMap.set(String(frame.scene), result.imageUrl) } catch { }
                     successCount++;
                     console.log(`${progress} 场景 ${frame.scene} 生成成功`);
                 } else {
@@ -721,30 +803,72 @@ function App() {
         setCharModal({ open: false, initial: null });
     };
 
-    const handleGeneratePreview = (id) => {
-        setFrames(prev => prev.map(f => (
-            f.id === id ? { ...f, imageUrl: createMockImage((f.content || `场 ${f.scene}`).slice(0, 30)) } : f
-        )));
+    const handleGeneratePreview = async (id) => {
+        const target = frames.find(f => f.id === id);
+        if (!target) return;
+        const globalStyle = bannerInfo.style || projectSetup.style || '写实摄影';
+        const ratio = bannerInfo.ratio || projectSetup.ratio || '1:1';
+        const sceneAnchor = (() => {
+            try {
+                const same = frames.filter(f => String(f.scene) === String(target.scene));
+                if (same.length === 0) return '';
+                const first = same[0];
+                const base = String(first.content || '').trim();
+                return base ? base : '';
+            } catch {
+                return '';
+            }
+        })();
+        const sceneRefs = [];
+        const prevInScene = frames
+            .filter(f => String(f.scene) === String(target.scene) && f.imageUrl)
+            .sort((a, b) => a.id === target.id ? 1 : b.id === target.id ? -1 : 0);
+        if (prevInScene.length > 0) {
+            const url = prevInScene[0].imageUrl;
+            if (url) sceneRefs.push(url);
+        }
+        try {
+            const controller = new AbortController();
+            const res = await generateStoryboardImage(target, characters, globalStyle, ratio, controller.signal, sceneAnchor, sceneRefs);
+            if (res.success) {
+                const key = `frame_${id}`;
+                try { await putImage(key, res.imageUrl) } catch { }
+                let thumb = null;
+                try { thumb = await toThumbnail(res.imageUrl, 512) } catch { }
+                setFrames(prev => prev.map(f => (f.id === id ? { ...f, imageUrl: res.imageUrl, imageKey: key, thumbnailUrl: thumb || f.thumbnailUrl || '' } : f)));
+            }
+        } catch { }
     };
 
-    const handleUploadPreview = (id, file) => {
-        const url = URL.createObjectURL(file);
-        setFrames(prev => prev.map(f => (f.id === id ? { ...f, imageUrl: url } : f)));
+    const handleUploadPreview = async (id, file) => {
+        try {
+            const buf = await file.arrayBuffer();
+            const b64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
+            const mime = file.type || 'image/png';
+            const dataUrl = `data:${mime};base64,${b64}`;
+            const key = `frame_${id}`;
+            try { await putImage(key, dataUrl) } catch { }
+            let thumb = null;
+            try { thumb = await toThumbnail(dataUrl, 512) } catch { }
+            setFrames(prev => prev.map(f => (f.id === id ? { ...f, imageUrl: dataUrl, imageKey: key, thumbnailUrl: thumb || f.thumbnailUrl || '' } : f)));
+        } catch { }
     };
 
     return (
         <div className="app-container">
 
             {/* Workflow Navigation Bar */}
-            <header className="top-nav">
+            <header className="top-nav relative z-50">
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <div style={{ background: 'var(--accent)', padding: '6px', borderRadius: '6px', display: 'flex' }}>
+                    <div className="bg-gradient-to-br from-blue-600 to-purple-600 p-1.5 rounded-lg shadow-lg shadow-blue-500/20">
                         <Clapperboard size={18} color="white" />
                     </div>
-                    <span style={{ fontWeight: 'bold', fontSize: '14px', letterSpacing: '0.5px' }}>STORYBOARD PRO</span>
+                    <span className="font-bold text-sm tracking-wide bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-400">
+                        STORYBOARD PRO
+                    </span>
                 </div>
 
-                <div className="nav-tabs" style={{ background: 'var(--bg-tertiary)', padding: '4px', borderRadius: '12px', border: '1px solid var(--border)' }}>
+                <div className="nav-tabs absolute left-1/2 -translate-x-1/2 bg-black/20 backdrop-blur-md border border-white/5 p-1 rounded-xl">
                     <button
                         onClick={() => setActiveTab('script')}
                         className={`nav-tab-item ${activeTab === 'script' ? 'active' : ''}`}
@@ -766,10 +890,10 @@ function App() {
                 </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <button className="btn btn-ghost" onClick={() => {
+                    <button className="btn btn-ghost hover:bg-white/5" onClick={() => {
                         showConfirm(
                             '将清空剧本、角色、分镜并重置项目设置，是否继续？',
-                            () => {
+                            async () => {
                                 try {
                                     localStorage.removeItem('cache.script');
                                     localStorage.removeItem('cache.frames');
@@ -780,6 +904,7 @@ function App() {
                                     localStorage.removeItem('cache.bannerInfo');
                                     localStorage.removeItem('cache.storyboard.viewMode');
                                     localStorage.removeItem('cache.storyboard.exportOpen');
+                                    await clearImageCache();
                                 } catch { }
                                 setScript('');
                                 setCharacters([]);
@@ -798,10 +923,20 @@ function App() {
                     }}>
                         重新生成
                     </button>
-                    <button className="btn btn-ghost" onClick={() => setSettingsOpen(true)}>
+                    <button className="btn btn-ghost hover:bg-white/5" onClick={() => setSettingsOpen(true)}>
                         <Settings size={16} />
                         设置
                     </button>
+                    {user ? (
+                        <UserMenu />
+                    ) : (
+                        <button
+                            className="btn btn-primary shadow-lg shadow-blue-500/20"
+                            onClick={() => setLoginModalOpen(true)}
+                        >
+                            登录
+                        </button>
+                    )}
                 </div>
             </header>
 
@@ -917,13 +1052,27 @@ function App() {
                 isDangerous={modal.isDangerous}
             />
 
+            <LoginModal
+                isOpen={loginModalOpen}
+                onClose={() => setLoginModalOpen(false)}
+            />
+
+            {toast && (
+                <Toast
+                    message={toast.message}
+                    type={toast.type}
+                    onClose={() => setToast(null)}
+                />
+            )}
+
         </div>
     );
 }
 
 export default App;
 
-const CharacterModal = ({ open, onClose, onSave, initial, showAlert }) => {
+const CharacterModal = ({ open, onClose, onSave, initial, showAlert, onPatch }) => {
+    const [id, setId] = useState(initial?.id || Date.now().toString());
     const [name, setName] = useState(initial?.name || '');
     const [age, setAge] = useState(initial?.age || '');
     const [gender, setGender] = useState(initial?.gender || '其他');
@@ -939,6 +1088,7 @@ const CharacterModal = ({ open, onClose, onSave, initial, showAlert }) => {
 
     useEffect(() => {
         if (open) {
+            setId(initial?.id || Date.now().toString());
             setName(initial?.name || '');
             setAge(initial?.age || '');
             setGender(initial?.gender || '其他');
@@ -955,12 +1105,18 @@ const CharacterModal = ({ open, onClose, onSave, initial, showAlert }) => {
 
     if (!open) return null;
 
-    const handleUpload = (e) => {
+    const handleUpload = async (e) => {
         const file = e.target.files?.[0];
         if (!file) return;
-        const url = URL.createObjectURL(file);
-        setImageUrl(url);
-        setReferenceImages([url]);
+        const buf = await file.arrayBuffer();
+        const b64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
+        const mime = file.type || 'image/png';
+        const dataUrl = `data:${mime};base64,${b64}`;
+        const key = `char_${id}`;
+        try { await putImage(key, dataUrl) } catch { }
+        setImageUrl(dataUrl);
+        setReferenceImages([dataUrl]);
+        try { onPatch && onPatch(id, { imageUrl: dataUrl, imageKey: key, referenceImages: [dataUrl] }) } catch { }
     };
 
     const handleGenerate = async () => {
@@ -984,8 +1140,13 @@ const CharacterModal = ({ open, onClose, onSave, initial, showAlert }) => {
             });
 
             if (result.success) {
+                const key = `char_${id}`;
+                try { await putImage(key, result.imageUrl) } catch { }
+                let thumb = null;
+                try { thumb = await toThumbnail(result.imageUrl, 256) } catch { }
                 setImageUrl(result.imageUrl);
                 setReferenceImages([result.imageUrl]);
+                try { onPatch && onPatch(id, { imageUrl: result.imageUrl, imageKey: key, referenceImages: [result.imageUrl], thumbnailUrl: thumb || '' }) } catch { }
             } else {
                 showAlert(`生成失败: ${result.error || '未知错误'}`, '错误', 'error');
             }
@@ -998,7 +1159,7 @@ const CharacterModal = ({ open, onClose, onSave, initial, showAlert }) => {
 
     const handleSave = () => {
         const data = {
-            id: initial?.id || Date.now().toString(),
+            id: id,
             name: name.trim() || '未命名角色',
             age,
             gender,
@@ -1092,9 +1253,20 @@ const CharacterModal = ({ open, onClose, onSave, initial, showAlert }) => {
                 )}
 
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '16px' }}>
-                    <button className="btn btn-ghost" onClick={onClose}><X size={14} />取消</button>
                     <button className="btn btn-primary" onClick={handleSave}><Check size={14} />确认</button>
                 </div>
+                {generating && (
+                    <div className="modal-overlay" style={{ zIndex: 1200 }}>
+                        <div className="glass-panel" style={{ padding: '16px 24px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                            <svg width="24" height="24" viewBox="0 0 50 50" aria-label="loading">
+                                <circle cx="25" cy="25" r="20" stroke="var(--accent)" strokeWidth="5" fill="none" strokeDasharray="90" strokeDashoffset="0">
+                                    <animateTransform attributeName="transform" type="rotate" from="0 25 25" to="360 25 25" dur="1s" repeatCount="indefinite" />
+                                </circle>
+                            </svg>
+                            <span style={{ fontSize: '15px', fontWeight: 500 }}>正在生成角色图片…</span>
+                        </div>
+                    </div>
+                )}
             </div>
         </div>
     );

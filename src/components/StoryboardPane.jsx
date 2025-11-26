@@ -20,7 +20,7 @@ export default function StoryboardPane({
   onStop,
   onRegenerate
 }) {
-  const [viewMode] = useState('list');
+  const [viewMode, setViewMode] = useState('list');
   const [exportOpen, setExportOpen] = useState(() => {
     try {
       const s = localStorage.getItem('cache.storyboard.exportOpen');
@@ -48,39 +48,38 @@ export default function StoryboardPane({
   }, [exportOpen]);
 
   return (
-    <div className="storyboard-view">
-      <div className="toolbar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div style={{ display: 'flex', gap: '8px' }}>
+    <div className="storyboard-view h-full flex flex-col">
+      <div className="toolbar flex justify-between items-center px-6 py-4 border-b border-gray-200 bg-white/80 backdrop-blur-sm z-10">
+        <div className="flex gap-2">
           <button
-            className={`btn ${viewMode === 'list' ? 'btn-primary' : 'btn-ghost'}`}
+            className={`btn ${viewMode === 'list' ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/20' : 'btn-ghost hover:bg-gray-100 text-gray-600'}`}
             onClick={() => setViewMode('list')}
           >
             <List size={16} /> 列表视图
           </button>
-
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <div className="text-secondary" style={{ fontSize: '13px' }}>
-            共 {frames.length} 个镜头 • 总时长 {frames.reduce((acc, f) => acc + f.duration, 0)}s
+        <div className="flex items-center gap-4">
+          <div className="text-xs text-gray-500 bg-gray-100 px-3 py-1.5 rounded-full border border-gray-200">
+            共 <span className="text-gray-900 font-medium">{frames.length}</span> 个镜头 • 总时长 <span className="text-gray-900 font-medium">{frames.reduce((acc, f) => acc + f.duration, 0)}s</span>
           </div>
 
           {generating ? (
             <>
-              <button className="btn" disabled>{stopping ? '停止中…' : '正在生成…'}</button>
+              <button className="btn bg-gray-100 text-gray-400 cursor-not-allowed" disabled>{stopping ? '停止中…' : '正在生成…'}</button>
               {!stopping && (
-                <button className="btn btn-ghost" onClick={onStop}>停止生成</button>
+                <button className="btn btn-ghost hover:bg-red-500/10 hover:text-red-500 text-red-400" onClick={onStop}>停止生成</button>
               )}
             </>
           ) : (
             <>
-              <button className="btn btn-primary" onClick={() => onGenerateAll && onGenerateAll()}>批量生成预览</button>
-              <div style={{ position: 'relative', display: 'inline-block' }}>
-                <button className="btn btn-ghost" onClick={() => setExportOpen(s => !s)}>导出</button>
+              <button className="btn btn-primary shadow-lg shadow-blue-500/20" onClick={() => onGenerateAll && onGenerateAll()}>批量生成预览</button>
+              <div className="relative inline-block">
+                <button className="btn btn-ghost hover:bg-gray-100 text-gray-600" onClick={() => setExportOpen(s => !s)}>导出</button>
                 {exportOpen && (
-                  <div className="glass-panel" style={{ position: 'absolute', right: 0, top: '36px', minWidth: '180px', padding: '8px', zIndex: 10 }}>
-                    <button className="btn btn-ghost" style={{ width: '100%' }} onClick={() => { downloadXLSX(frames); setExportOpen(false); }}>导出 Excel (.xlsx)</button>
-                    <button className="btn btn-ghost" style={{ width: '100%' }} onClick={() => { downloadJSON(frames); setExportOpen(false); }}>导出 JSON</button>
-                    <button className="btn btn-ghost" style={{ width: '100%' }} onClick={() => { downloadFeishuBase(frames); setExportOpen(false); }}>导出飞书多维表格</button>
+                  <div className="absolute right-0 top-full mt-2 min-w-[180px] p-1.5 rounded-xl bg-white border border-gray-200 shadow-xl z-50 animate-in slide-in-from-top-2 fade-in duration-200">
+                    <button className="flex w-full items-center px-3 py-2 text-sm text-gray-600 hover:bg-gray-50 hover:text-gray-900 rounded-lg transition-colors text-left" onClick={() => { downloadXLSX(frames); setExportOpen(false); }}>导出 Excel (.xlsx)</button>
+                    <button className="flex w-full items-center px-3 py-2 text-sm text-gray-600 hover:bg-gray-50 hover:text-gray-900 rounded-lg transition-colors text-left" onClick={() => { downloadJSON(frames); setExportOpen(false); }}>导出 JSON</button>
+                    <button className="flex w-full items-center px-3 py-2 text-sm text-gray-600 hover:bg-gray-50 hover:text-gray-900 rounded-lg transition-colors text-left" onClick={() => { downloadFeishuBase(frames); setExportOpen(false); }}>导出飞书多维表格</button>
                   </div>
                 )}
               </div>
@@ -89,39 +88,39 @@ export default function StoryboardPane({
         </div>
       </div>
 
-      <div className="storyboard-content">
+      <div className="storyboard-content flex-1 overflow-y-auto p-6">
         {
           (
-            <table className="storyboard-table">
+            <table className="w-full border-collapse text-sm">
               <thead>
-                <tr>
-                  <th style={{ width: '50px' }}>#</th>
-                  <th style={{ width: '160px' }}>预览图</th>
-                  <th style={{ width: '140px' }}>角色</th>
-                  <th>画面描述</th>
-                  <th>台词/音效</th>
-                  <th style={{ width: '80px' }}>景别</th>
-                  <th style={{ width: '80px' }}>运镜</th>
-                  <th style={{ width: '70px' }}>时长</th>
-                  <th style={{ width: '60px' }}>操作</th>
+                <tr className="border-b border-gray-200">
+                  <th className="py-3 px-4 text-left text-gray-500 font-medium w-[60px]">#</th>
+                  <th className="py-3 px-4 text-left text-gray-500 font-medium w-[180px]">预览图</th>
+                  <th className="py-3 px-4 text-left text-gray-500 font-medium w-[150px]">角色</th>
+                  <th className="py-3 px-4 text-left text-gray-500 font-medium">画面描述</th>
+                  <th className="py-3 px-4 text-left text-gray-500 font-medium">台词/音效</th>
+                  <th className="py-3 px-4 text-left text-gray-500 font-medium w-[90px]">景别</th>
+                  <th className="py-3 px-4 text-left text-gray-500 font-medium w-[90px]">运镜</th>
+                  <th className="py-3 px-4 text-left text-gray-500 font-medium w-[80px]">时长</th>
+                  <th className="py-3 px-4 text-left text-gray-500 font-medium w-[70px]">操作</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="divide-y divide-gray-100">
                 {frames.map((frame) => (
-                  <tr key={frame.id}>
-                    <td style={{ fontWeight: 'bold' }}>{frame.scene}</td>
-                    <td>
-                      <div style={{ width: '160px', aspectRatio: ratioValue, borderRadius: '6px', background: 'var(--bg-secondary)', position: 'relative', overflow: 'hidden', border: '1px solid var(--border)' }}>
+                  <tr key={frame.id} className="group hover:bg-gray-50 transition-colors">
+                    <td className="py-4 px-4 font-bold text-gray-500 group-hover:text-gray-900">{frame.scene}</td>
+                    <td className="py-4 px-4">
+                      <div className="w-[160px] rounded-lg bg-gray-100 border border-gray-200 overflow-hidden relative group/img" style={{ aspectRatio: ratioValue }}>
                         {frame.imageUrl ? (
-                          <img src={frame.imageUrl} alt="thumb" style={{ width: '100%', height: '100%', objectFit: 'cover', cursor: 'zoom-in' }} onClick={() => setPreviewUrl(frame.imageUrl)} />
+                          <img src={frame.imageUrl} alt="thumb" className="w-full h-full object-cover cursor-zoom-in transition-transform duration-500 group-hover/img:scale-105" onClick={() => setPreviewUrl(frame.imageUrl)} />
                         ) : (
-                          <div className="flex-center" style={{ width: '100%', height: '100%', color: 'var(--text-secondary)', fontSize: '12px' }}>
+                          <div className="flex items-center justify-center w-full h-full text-gray-400 text-xs">
                             未生成
                           </div>
                         )}
                         {generatingIds && generatingIds.has && generatingIds.has(frame.id) && (
-                          <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                            <svg width="32" height="32" viewBox="0 0 50 50" aria-label="loading">
+                          <div className="absolute inset-0 bg-black/60 flex items-center justify-center backdrop-blur-sm">
+                            <svg width="24" height="24" viewBox="0 0 50 50" aria-label="loading">
                               <circle cx="25" cy="25" r="20" stroke="white" strokeWidth="4" fill="none" strokeDasharray="90" strokeDashoffset="0">
                                 <animateTransform attributeName="transform" type="rotate" from="0 25 25" to="360 25 25" dur="1s" repeatCount="indefinite" />
                               </circle>
@@ -130,41 +129,45 @@ export default function StoryboardPane({
                         )}
                       </div>
                     </td>
-                    <td>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                    <td className="py-4 px-4">
+                      <div className="flex flex-wrap gap-1.5">
                         {String(frame.character || '')
                           .split(',')
                           .map(n => n.trim())
                           .filter(Boolean)
                           .map(name => (
-                            <span key={name} style={{ fontSize: '12px', padding: '2px 6px', borderRadius: '12px', background: 'var(--chip-bg)', color: 'var(--text-secondary)', border: '1px solid var(--border)' }}>{name}</span>
+                            <span key={name} className="px-2 py-0.5 rounded-md bg-gray-100 border border-gray-200 text-xs text-gray-600">{name}</span>
                           ))}
                         {(!frame.character || String(frame.character).trim() === '') && (
-                          <span className="text-secondary" style={{ fontSize: '12px' }}>无</span>
+                          <span className="text-gray-400 text-xs">无</span>
                         )}
                       </div>
                     </td>
-                    <td style={{ minWidth: '220px' }}>
+                    <td className="py-4 px-4 min-w-[220px] text-gray-800">
                       <EditableCell multiline value={frame.content} onSave={(val) => updateFrame(frame.id, 'content', val)} />
                     </td>
-                    <td style={{ minWidth: '180px', color: 'var(--text-secondary)' }}>
+                    <td className="py-4 px-4 min-w-[180px] text-gray-500">
                       <EditableCell multiline value={frame.dialogue} onSave={(val) => updateFrame(frame.id, 'dialogue', val)} />
                     </td>
-                    <td>
+                    <td className="py-4 px-4 text-gray-700">
                       <EditableCell value={frame.shot} onSave={(val) => updateFrame(frame.id, 'shot', val)} />
                     </td>
-                    <td>
+                    <td className="py-4 px-4 text-gray-700">
                       <EditableCell value={frame.cameraMovement} onSave={(val) => updateFrame(frame.id, 'cameraMovement', val)} />
                     </td>
-                    <td>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <td className="py-4 px-4">
+                      <div className="flex items-center gap-1 text-gray-700">
                         <EditableCell type="number" value={frame.duration} onSave={(val) => updateFrame(frame.id, 'duration', Number(val))} />
-                        <span className="text-secondary" style={{ fontSize: '12px' }}>s</span>
+                        <span className="text-gray-400 text-xs">s</span>
                       </div>
                     </td>
-                    <td style={{ position: 'relative' }}>
-                      <button className="btn-icon" onClick={() => setAiPopupState({ isOpen: true, frameId: frame.id })}>
-                        <Sparkles size={14} />
+                    <td className="py-4 px-4 relative">
+                      <button
+                        className="p-2 rounded-lg text-gray-400 hover:text-blue-500 hover:bg-blue-50 transition-colors"
+                        onClick={() => setAiPopupState({ isOpen: true, frameId: frame.id })}
+                        title="AI 编辑"
+                      >
+                        <Sparkles size={16} />
                       </button>
                       {aiPopupState.isOpen && aiPopupState.frameId === frame.id && (
                         <AIEditPopup
@@ -183,9 +186,9 @@ export default function StoryboardPane({
         }
       </div>
       {previewUrl && (
-        <div className="modal-overlay" onClick={() => setPreviewUrl(null)}>
-          <div style={{ background: 'transparent' }} onClick={(e) => e.stopPropagation()}>
-            <img src={previewUrl} alt="preview" className="image-lightbox-img" />
+        <div className="modal-overlay z-[2000]" onClick={() => setPreviewUrl(null)}>
+          <div className="bg-transparent p-4" onClick={(e) => e.stopPropagation()}>
+            <img src={previewUrl} alt="preview" className="max-w-[90vw] max-h-[90vh] rounded-lg shadow-2xl ring-1 ring-white/10" />
           </div>
         </div>
       )}

@@ -1,4 +1,9 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 :root {
+
   --app-bg: #f1f5f9;
   --panel-bg: #ffffff;
   --bg-secondary: #f8fafc;
